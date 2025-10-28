@@ -41,7 +41,13 @@ try
 
     // Clean up the URL remove any whitespace and remove everything before http in the URL
     url = url.Trim();
-    url = url.Substring(url.IndexOf("http", StringComparison.OrdinalIgnoreCase));
+    int httpIndex = url.IndexOf("http", StringComparison.OrdinalIgnoreCase);
+    if (httpIndex == -1)
+    {
+        Log.Error("URL does not contain 'http' or 'https': {Url}", url);
+        return;
+    }
+    url = url.Substring(httpIndex);
 
     var configuration = new ConfigurationBuilder()
         .SetBasePath(Directory.GetCurrentDirectory())
@@ -73,11 +79,40 @@ try
     // Create a Uri object from the URL
     var urlDomainObject = new Uri(url);
 
-    // Extract the host from the URL
-    var host = urlDomainObject.Host.Replace("www.", "");
+    // Extract the host from the URL and normalize it by removing www. prefix if present
+    var host = urlDomainObject.Host;
+    if (host.StartsWith("www.", StringComparison.OrdinalIgnoreCase))
+    {
+        host = host.Substring(4);
+    }
 
-    // Check if the URL contains any of the URLs in the list
-    if (urls.Any(x => x != null && x.Contains(host, StringComparison.OrdinalIgnoreCase)))
+    // Extract domains from configured URLs and check if the current host matches any of them
+    var configuredDomains = urls
+        .Where(x => x != null)
+        .Select(x =>
+        {
+            try
+            {
+                var uri = new Uri(x);
+                var domain = uri.Host;
+                // Normalize by removing www. prefix
+                if (domain.StartsWith("www.", StringComparison.OrdinalIgnoreCase))
+                {
+                    domain = domain.Substring(4);
+                }
+                return domain;
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "Failed to parse configured URL: {Url}", x);
+                return null;
+            }
+        })
+        .Where(x => x != null)
+        .ToList();
+
+    // Check if the current host matches any of the configured domains
+    if (configuredDomains.Any(domain => host.Equals(domain, StringComparison.OrdinalIgnoreCase)))
     {
         browserPath = alternativeBrowser;
     }
